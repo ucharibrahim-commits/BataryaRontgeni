@@ -1,8 +1,9 @@
+
 name: Android APK Derleyici
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "ana" ]
 
 jobs:
   build:
@@ -18,13 +19,34 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    - name: APK Derleme Komutunu Calistir
+    - name: Android Proje Catısını Sifirdan Kur
       run: |
-        gradle init --type android-application --dsl kotlin
-        ./gradlew assembleDebug
+        # Gradle wrapper ve temel ayarları sanal makinede otomatik üretiyoruz
+        gradle init --type basic --dsl kotlin --project-name BataryaRontgeni
+        
+        # Gerekli Android klasör ağacını oluşturuyoruz
+        mkdir -p app/src/main/java/com/hardware/batterymonitor/core
+        mkdir -p app/src/main/java/com/hardware/batterymonitor/services
+        mkdir -p app/src/main/java/com/hardware/batterymonitor/ui
+        
+        # Gönderdiğin ham dosyaları doğru Android klasör yollarına taşıyoruz
+        [ -f AndroidManifest.xml.txt ] && mv AndroidManifest.xml.txt app/src/main/AndroidManifest.xml
+        [ -f MainActivity.kt.txt ] && mv MainActivity.kt.txt app/src/main/java/com/hardware/batterymonitor/MainActivity.kt
+        [ -f BatteryHardwareManager.kotlin.txt ] && mv BatteryHardwareManager.kotlin.txt app/src/main/java/com/hardware/batterymonitor/core/BatteryHardwareManager.kt
+        [ -f BatteryMonitorService.kotlin.txt ] && mv BatteryMonitorService.kotlin.txt app/src/main/java/com/hardware/batterymonitor/services/BatteryMonitorService.kt
+        [ -f BatteryViewModel.kt.txt ] && mv BatteryViewModel.kt.txt app/src/main/java/com/hardware/batterymonitor/ui/BatteryViewModel.kt
+        [ -f BatteryDashboardScreen.kotlin.txt ] && mv BatteryDashboardScreen.kotlin.txt app/src/main/java/com/hardware/batterymonitor/ui/BatteryDashboardScreen.kt
+
+        # Temel derleme ayarlarını enjekte ediyoruz
+        echo "pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }; dependencyResolutionManagement { repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS); repositories { google(); mavenCentral() } }; rootProject.name = \"BataryaRontgeni\"; include(\":app\")" > settings.gradle.kts
+        echo "plugins { id(\"com.android.application\") version \"8.1.1\" apply false; id(\"org.jetbrains.kotlin.android\") version \"1.8.10\" apply false }" > build.gradle.kts
+        echo -e "plugins { id(\"com.android.application\"); id(\"org.jetbrains.kotlin.android\") }\nandroid { compileSdk = 33; defaultConfig { applicationId = \"com.hardware.batterymonitor\"; minSdk = 24; targetSdk = 33; versionCode = 1; versionName = \"1.0\" }; buildFeatures { compose = true }; composeOptions { kotlinCompilerExtensionVersion = \"1.4.3\" } }\ndependencies { implementation(\"androidx.core:core-ktx:1.10.1\"); implementation(\"androidx.lifecycle:lifecycle-runtime-ktx:2.6.1\"); implementation(\"androidx.activity:activity-compose:1.7.2\"); implementation(platform(\"androidx.compose:compose-bom:2023.05.01\")); implementation(\"androidx.compose.ui:ui\"); implementation(\"androidx.compose.ui:ui-graphics\"); implementation(\"androidx.compose.ui:ui-tooling-preview\"); implementation(\"androidx.compose.material3:material3\") }" > app/build.gradle.kts
+
+    - name: APK Derleme Komutunu Calistir
+      run: ./gradlew assembleDebug
 
     - name: Uretilen APKyi Indirmeye Hazirla
-      uses: actions/actions-artifact-upload@v2
+      uses: actions/actions-artifact-upload@v4
       with:
         name: Batarya-Rontgeni-APK
         path: app/build/outputs/apk/debug/app-debug.apk
