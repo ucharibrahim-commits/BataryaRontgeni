@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Depodaki Kodlari Cek
+    - name: Depoyu Temiz Cek
       uses: actions/checkout@v4
 
     - name: Java JDK 17 Ortamini Kur
@@ -19,53 +19,272 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    - name: Android Klasor Agacini Hazirla
+    - name: Proje Klasor Mimarisini Olustur
       run: |
         mkdir -p app/src/main/java/com/hardware/batterymonitor/core
         mkdir -p app/src/main/java/com/hardware/batterymonitor/services
         mkdir -p app/src/main/java/com/hardware/batterymonitor/ui
 
-    - name: Kaynak Dosyalarini Tasila ve Uzantilarini Düzelt
+    - name: Android Manifest Dosyasini Enjekte Et
       run: |
-        cp AndroidManifest.xml.txt app/src/main/AndroidManifest.xml || cp AndroidManifest.xml app/src/main/AndroidManifest.xml || true
-        cp MainActivity.kt.txt app/src/main/java/com/hardware/batterymonitor/MainActivity.kt || cp MainActivity.kt app/src/main/java/com/hardware/batterymonitor/MainActivity.kt || true
-        cp BatteryHardwareManager.kotlin.txt app/src/main/java/com/hardware/batterymonitor/core/BatteryHardwareManager.kt || cp BatteryHardwareManager.kt app/src/main/java/com/hardware/batterymonitor/core/BatteryHardwareManager.kt || true
-        cp BatteryMonitorService.kotlin.txt app/src/main/java/com/hardware/batterymonitor/services/BatteryMonitorService.kt || cp BatteryMonitorService.kt app/src/main/java/com/hardware/batterymonitor/services/BatteryMonitorService.kt || true
-        cp BatteryViewModel.kt.txt app/src/main/java/com/hardware/batterymonitor/ui/BatteryViewModel.kt || cp BatteryViewModel.kt app/src/main/java/com/hardware/batterymonitor/ui/BatteryViewModel.kt || true
-        cp BatteryDashboardScreen.kotlin.txt app/src/main/java/com/hardware/batterymonitor/ui/BatteryDashboardScreen.kt || cp BatteryDashboardScreen.kt app/src/main/java/com/hardware/batterymonitor/ui/BatteryDashboardScreen.kt || true
+        cat << 'EOF' > app/src/main/AndroidManifest.xml
+        <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.hardware.batterymonitor">
+            <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+            <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+            <uses-permission android:name="android.permission.WAKE_LOCK" />
+            <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+            <application android:theme="@style/Theme.Material3.DayNight.NoActionBar">
+                <activity android:name=".MainActivity" android:exported="true">
+                    <intent-filter>
+                        <action android:name="android.intent.action.MAIN" />
+                        <category android:name="android.intent.category.LAUNCHER" />
+                    </intent-filter>
+                </activity>
+                <service android:name=".services.BatteryMonitorService" android:foregroundServiceType="specialUse" />
+            </application>
+        </manifest>
+        EOF
 
-    - name: Kok Ayar Dosyasini Olustur (settings.gradle.kts)
+    - name: Batarya Donanim Yoneticisini Enjekte Et
+      run: |
+        cat << 'EOF' > app/src/main/java/com/hardware/batterymonitor/core/BatteryHardwareManager.kt
+        package com.hardware.batterymonitor.core
+        import android.content.Context
+        import android.os.BatteryManager
+        class BatteryHardwareManager(private val context: Context) {
+            private val batteryManager = context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+            fun getCurrentNow(): Int {
+                val currentMicroAmp = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
+                return currentMicroAmp / 1000
+            }
+            fun getCycleCount(): Int {
+                return batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CYCLE_COUNT)
+            }
+        }
+        EOF
+
+    - name: Arkaplan Izleme Servisini Enjekte Et
+      run: |
+        cat << 'EOF' > app/src/main/java/com/hardware/batterymonitor/services/BatteryMonitorService.kt
+        package com.hardware.batterymonitor.services
+        import android.app.*
+        import android.content.Context
+        import android.content.Intent
+        import android.os.Build
+        import android.os.IBinder
+        import androidx.core.app.NotificationCompat
+        import com.hardware.batterymonitor.core.BatteryHardwareManager
+        import java.util.*
+        class BatteryMonitorService : Service() {
+            private lateinit var hardwareManager: BatteryHardwareManager
+            private var timer: Timer? = null
+            override fun onCreate() {
+                super.onCreate()
+                hardwareManager = BatteryHardwareManager(this)
+                startForegroundServiceWithNotification()
+                startDataCollectionTimer()
+            }
+            private fun startDataCollectionTimer() {
+                timer = Timer()
+                timer?.scheduleAtFixedRate(object : TimerTask() {
+                    override fun run() {
+                        val currentmA = hardwareManager.getCurrentNow()
+                        val cycleCount = hardwareManager.getCycleCount()
+                        val updateIntent = Intent("BATTERY_HARDWARE_UPDATE").apply {
+                            putExtra("current", currentmA)
+                            putExtra("cycle", cycleCount)
+                        }
+                        sendBroadcast(updateIntent)
+                    }
+                }, 0, 5000)
+            }
+            private fun startForegroundServiceWithNotification() {
+                val channelId = "battery_offline_monitor_channel"
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    val channel = NotificationChannel(channelId, "Güvenli Pil İzleme Motoru", NotificationManager.IMPORTANCE_LOW)
+                    val manager = getSystemService(NotificationManager::class.java)
+                    manager.createNotificationChannel(channel)
+                }
+                val notification = NotificationCompat.Builder(this, channelId)
+                    .setContentTitle("Kapalı Devre Batarya Analizi Aktif")
+                    .setContentText("Donanım verileri %100 internetsiz ortamda inceleniyor.")
+                    .setSmallIcon(android.R.drawable.ic_lock_idle_low_battery)
+                    .setOngoing(true)
+                    .build()
+                startForeground(1, notification)
+            }
+            override fun onBind(intent: Intent?): IBinder? = null
+            override fun onDestroy() {
+                super.onDestroy()
+                timer?.cancel()
+            }
+        }
+        EOF
+
+    - name: UI ViewModel Katmanini Enjekte Et
+      run: |
+        cat << 'EOF' > app/src/main/java/com/hardware/batterymonitor/ui/BatteryViewModel.kt
+        package com.hardware.batterymonitor.ui
+        import androidx.lifecycle.ViewModel
+        import kotlinx.flow.MutableStateFlow
+        import kotlinx.flow.StateFlow
+        data class BatteryUiState(
+            val percentage: Int = 100,
+            val voltageInmV: Int = 4200,
+            val currentInmA: Int = 0,
+            val temperature: Int = 25,
+            val cycleCount: Int = 0,
+            val isChangeRequired: Boolean = false,
+            val alertReason: String = ""
+        )
+        class BatteryViewModel : ViewModel() {
+            private val _uiState = MutableStateFlow(BatteryUiState())
+            val uiState: StateFlow<BatteryUiState> = _uiState
+            fun updateHardwareData(current: Int, cycle: Int, voltage: Int, temp: Int, percent: Int) {
+                var changeRequired = false
+                var reason = ""
+                when {
+                    cycle >= 800 -> { changeRequired = true; reason = "Yüksek Döngü ($cycle Çevrim)" }
+                    voltage in 1..3400 -> { changeRequired = true; reason = "Kritik Voltaj Çökmesi ($voltage mV)" }
+                }
+                _uiState.value = BatteryUiState(
+                    percentage = percent, voltageInmV = voltage, currentInmA = current,
+                    temperature = temp, cycleCount = cycle, isChangeRequired = changeRequired, alertReason = reason
+                )
+            }
+        }
+        EOF
+
+    - name: UI Ekran Tasarimini Enjekte Et
+      run: |
+        cat << 'EOF' > app/src/main/java/com/hardware/batterymonitor/ui/BatteryDashboardScreen.kt
+        package com.hardware.batterymonitor.ui
+        import androidx.compose.foundation.background
+        import androidx.compose.foundation.layout.*
+        import androidx.compose.foundation.shape.RoundedCornerShape
+        import androidx.compose.material3.*
+        import androidx.compose.runtime.*
+        import androidx.compose.ui.Modifier
+        import androidx.compose.ui.graphics.Color
+        import androidx.compose.ui.text.font.FontWeight
+        import androidx.compose.ui.unit.dp
+        import androidx.compose.ui.unit.sp
+        @Composable
+        fun BatteryDashboardScreen(viewModel: BatteryViewModel) {
+            val uiState by viewModel.uiState.collectAsState()
+            Column(modifier = Modifier.fillMaxSize().background(Color(#0F172A)).padding(16.dp)) {
+                Text(text = "KAPALI DEVRE DONANIM ANALİZİ", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 16.dp))
+                if (uiState.isChangeRequired) {
+                    Card(colors = CardDefaults.cardColors(containerColor = Color(#991B1B)), shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text("⚠️ FİZİKSEL BATARYA DEĞİŞİM ALARMI", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text("Çip Analizi Sonucu: Hücrelerin kimyasal ömrü tükenmiştir.", color = Color.White, fontSize = 13.sp)
+                            Text("Arıza Nedeni: ${uiState.alertReason}", color = Color(#FECACA), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
+                    }
+                }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    DataBox(label = "ANLIK AKIM ŞİDDETİ", value = "${uiState.currentInmA} mA", modifier = Modifier.weight(1f))
+                    DataBox(label = "HÜCRE GERİLİMİ", value = "${uiState.voltageInmV} mV", modifier = Modifier.weight(1f))
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    DataBox(label = "TOPLAM ŞARJ DÖNGÜSÜ", value = "${uiState.cycleCount} Çevrim", modifier = Modifier.weight(1f))
+                    DataBox(label = "DONANIM SICAKLIĞI", value = "${uiState.temperature} °C", modifier = Modifier.weight(1f))
+                }
+            }
+        }
+        @Composable
+        fun DataBox(label: String, value: String, modifier: Modifier = Modifier) {
+            Card(colors = CardDefaults.cardColors(containerColor = Color(#1E293B)), shape = RoundedCornerShape(6.dp), modifier = modifier) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Text(text = label, color = Color(#94A3B8), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(text = value, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+        EOF
+
+    - name: MainActivity Tetikleyicisini Enjekte Et
+      run: |
+        cat << 'EOF' > app/src/main/java/com/hardware/batterymonitor/MainActivity.kt
+        package com.hardware.batterymonitor
+        import android.content.*
+        import android.net.Uri
+        import android.os.*
+        import android.provider.Settings
+        import androidx.activity.ComponentActivity
+        import androidx.activity.compose.setContent
+        import androidx.activity.viewModels
+        import com.hardware.batterymonitor.services.BatteryMonitorService
+        import com.hardware.batterymonitor.ui.BatteryDashboardScreen
+        import com.hardware.batterymonitor.ui.BatteryViewModel
+        class MainActivity : ComponentActivity() {
+            private val batteryViewModel: BatteryViewModel by viewModels()
+            private val batteryReceiver = object : BroadcastReceiver() {
+                override fun onReceive(context: Context?, intent: Intent?) {
+                    if (intent?.action == "BATTERY_HARDWARE_UPDATE") {
+                        val current = intent.getIntExtra("current", 0)
+                        val cycle = intent.getIntExtra("cycle", 0)
+                        // Donanımdan voltaj, sıcaklık ve yüzde verilerini de sistemden çekiyoruz
+                        val ifilter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
+                        val batteryStatus = context?.registerReceiver(null, ifilter)
+                        val voltage = batteryStatus?.getIntExtra(BatteryManager.EXTRA_VOLTAGE, 0) ?: 0
+                        val temperature = (batteryStatus?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0) ?: 0) / 10
+                        val level = batteryStatus?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+                        val scale = batteryStatus?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+                        val percent = (level * 100 / scale.toFloat()).toInt()
+                        
+                        batteryViewModel.updateHardwareData(current, cycle, voltage, temperature, percent)
+                    }
+                }
+            }
+            override fun onCreate(savedInstanceState: Bundle?) {
+                super.onCreate(savedInstanceState)
+                checkAndRequestBatteryOptimization(this)
+                registerReceiver(batteryReceiver, IntentFilter("BATTERY_HARDWARE_UPDATE"))
+                val serviceIntent = Intent(this, BatteryMonitorService::class.java)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    startForegroundService(serviceIntent)
+                } else {
+                    startService(serviceIntent)
+                }
+                setContent { BatteryDashboardScreen(viewModel = batteryViewModel) }
+            }
+            override fun onDestroy() {
+                super.onDestroy()
+                try { unregisterReceiver(batteryReceiver) } catch (e: Exception) {}
+            }
+            private fun checkAndRequestBatteryOptimization(context: Context) {
+                val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+                if (!pm.isIgnoringBatteryOptimizations(context.packageName)) {
+                    val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                        data = Uri.parse("package:${context.packageName}")
+                    }
+                    context.startActivity(intent)
+                }
+            }
+        }
+        EOF
+
+    - name: Gradle Çatı Yapısını Tamamen Kur (Ayar Enjeksiyonu)
       run: |
         cat << 'EOF' > settings.gradle.kts
-        pluginManagement {
-            repositories {
-                google()
-                mavenCentral()
-                gradlePluginPortal()
-            }
-        }
-        dependencyResolutionManagement {
-            repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-            repositories {
-                google()
-                mavenCentral()
-            }
-        }
+        pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
+        dependencyResolutionManagement { repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS); repositories { google(); mavenCentral() } }
         rootProject.name = "BataryaRontgeni"
         include(":app")
         EOF
-
-    - name: Kok Derleme Dosyasini Olustur (build.gradle.kts)
-      run: |
+        
         cat << 'EOF' > build.gradle.kts
         plugins {
             id("com.android.application") version "8.1.1" apply false
             id("org.jetbrains.kotlin.android") version "1.8.10" apply false
         }
         EOF
-
-    - name: Uygulama Modul Derleme Dosyasini Olustur (app/build.gradle.kts)
-      run: |
+        
         cat << 'EOF' > app/build.gradle.kts
         plugins {
             id("com.android.application")
@@ -81,15 +300,9 @@ jobs:
                 versionCode = 1
                 versionName = "1.0"
             }
-            buildFeatures {
-                compose = true
-            }
-            composeOptions {
-                kotlinCompilerExtensionVersion = "1.4.3"
-            }
-            kotlinOptions {
-                jvmTarget = "17"
-            }
+            buildFeatures { compose = true }
+            composeOptions { kotlinCompilerExtensionVersion = "1.4.3" }
+            kotlinOptions { jvmTarget = "17" }
         }
         dependencies {
             implementation("androidx.core:core-ktx:1.10.1")
@@ -106,7 +319,7 @@ jobs:
     - name: Yerel Gradle Sürücüsünü Kur (Wrapper)
       run: gradle wrapper --gradle-version 8.1.1
 
-    - name: Projeyi Temizle ve APKyi Derle
+    - name: Motoru Atesle ve APK Derle
       run: ./gradlew assembleDebug
 
     - name: Hazir APKyi Yukle ve Indirmeye Ac
