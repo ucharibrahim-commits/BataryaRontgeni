@@ -1,15 +1,16 @@
+
 name: Android APK Derleyici
 
 on:
   push:
-    branches: [ "main", "ana" ]
+    branches: [ "ana", "main" ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Kodlari Depodan Cek
+    - name: Depodaki Kodlari Cek
       uses: actions/checkout@v4
 
     - name: Java JDK 17 Ortamini Kur
@@ -18,35 +19,97 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    - name: Android Proje Yapısını Enjekte Et
+    - name: Android Klasor Agacini Hazirla
       run: |
-        # 1. Gerekli tüm Android klasör mimarisini oluşturuyoruz
         mkdir -p app/src/main/java/com/hardware/batterymonitor/core
         mkdir -p app/src/main/java/com/hardware/batterymonitor/services
         mkdir -p app/src/main/java/com/hardware/batterymonitor/ui
-        
-        # 2. Yüklediğin ham dosyaları doğru paket yollarına isimlerini düzelterek taşıyoruz
-        [ -f AndroidManifest.xml.txt ] && mv AndroidManifest.xml.txt app/src/main/AndroidManifest.xml
-        [ -f MainActivity.kt.txt ] && mv MainActivity.kt.txt app/src/main/java/com/hardware/batterymonitor/MainActivity.kt
-        [ -f BatteryHardwareManager.kotlin.txt ] && mv BatteryHardwareManager.kotlin.txt app/src/main/java/com/hardware/batterymonitor/core/BatteryHardwareManager.kt
-        [ -f BatteryMonitorService.kotlin.txt ] && mv BatteryMonitorService.kotlin.txt app/src/main/java/com/hardware/batterymonitor/services/BatteryMonitorService.kt
-        [ -f BatteryViewModel.kt.txt ] && mv BatteryViewModel.kt.txt app/src/main/java/com/hardware/batterymonitor/ui/BatteryViewModel.kt
-        [ -f BatteryDashboardScreen.kotlin.txt ] && mv BatteryDashboardScreen.kotlin.txt app/src/main/java/com/hardware/batterymonitor/ui/BatteryDashboardScreen.kt
 
-        # 3. Gradle motorunun takılmadan çalışması için çatı ayar dosyalarını doğrudan oluşturuyoruz
-        echo "pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }; dependencyResolutionManagement { repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS); repositories { google(); mavenCentral() } }; rootProject.name = \"BataryaRontgeni\"; include(\":app\")" > settings.gradle.kts
-        echo "plugins { id(\"com.android.application\") version \"8.1.1\" apply false; id(\"org.jetbrains.kotlin.android\") version \"1.8.10\" apply false }" > build.gradle.kts
-        
-        # 4. Uygulamanın derleme ve kütüphane bağımlılıklarını yazıyoruz
-        echo -e "plugins { id(\"com.android.application\"); id(\"org.jetbrains.kotlin.android\") }\nandroid { compileSdk = 33; namespace = \"com.hardware.batterymonitor\"; defaultConfig { applicationId = \"com.hardware.batterymonitor\"; minSdk = 24; targetSdk = 33; versionCode = 1; versionName = \"1.0\" }; buildFeatures { compose = true }; composeOptions { kotlinCompilerExtensionVersion = \"1.4.3\" }; kotlinOptions { jvmTarget = \"17\" } }\ndependencies { implementation(\"androidx.core:core-ktx:1.10.1\"); implementation(\"androidx.lifecycle:lifecycle-runtime-ktx:2.6.1\"); implementation(\"androidx.activity:activity-compose:1.7.2\"); implementation(platform(\"androidx.compose:compose-bom:2023.05.01\")); implementation(\"androidx.compose.ui:ui\"); implementation(\"androidx.compose.ui:ui-graphics\"); implementation(\"androidx.compose.ui:ui-tooling-preview\"); implementation(\"androidx.compose.material3:material3\") }" > app/build.gradle.kts
+    - name: Kaynak Dosyalarini Tasila ve Uzantilarini Düzelt
+      run: |
+        cp AndroidManifest.xml.txt app/src/main/AndroidManifest.xml || cp AndroidManifest.xml app/src/main/AndroidManifest.xml || true
+        cp MainActivity.kt.txt app/src/main/java/com/hardware/batterymonitor/MainActivity.kt || cp MainActivity.kt app/src/main/java/com/hardware/batterymonitor/MainActivity.kt || true
+        cp BatteryHardwareManager.kotlin.txt app/src/main/java/com/hardware/batterymonitor/core/BatteryHardwareManager.kt || cp BatteryHardwareManager.kt app/src/main/java/com/hardware/batterymonitor/core/BatteryHardwareManager.kt || true
+        cp BatteryMonitorService.kotlin.txt app/src/main/java/com/hardware/batterymonitor/services/BatteryMonitorService.kt || cp BatteryMonitorService.kt app/src/main/java/com/hardware/batterymonitor/services/BatteryMonitorService.kt || true
+        cp BatteryViewModel.kt.txt app/src/main/java/com/hardware/batterymonitor/ui/BatteryViewModel.kt || cp BatteryViewModel.kt app/src/main/java/com/hardware/batterymonitor/ui/BatteryViewModel.kt || true
+        cp BatteryDashboardScreen.kotlin.txt app/src/main/java/com/hardware/batterymonitor/ui/BatteryDashboardScreen.kt || cp BatteryDashboardScreen.kt app/src/main/java/com/hardware/batterymonitor/ui/BatteryDashboardScreen.kt || true
 
-    - name: Yerel Gradle Sürücüsünü Kur
+    - name: Kok Ayar Dosyasini Olustur (settings.gradle.kts)
+      run: |
+        cat << 'EOF' > settings.gradle.kts
+        pluginManagement {
+            repositories {
+                google()
+                mavenCentral()
+                gradlePluginPortal()
+            }
+        }
+        dependencyResolutionManagement {
+            repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+            repositories {
+                google()
+                mavenCentral()
+            }
+        }
+        rootProject.name = "BataryaRontgeni"
+        include(":app")
+        EOF
+
+    - name: Kok Derleme Dosyasini Olustur (build.gradle.kts)
+      run: |
+        cat << 'EOF' > build.gradle.kts
+        plugins {
+            id("com.android.application") version "8.1.1" apply false
+            id("org.jetbrains.kotlin.android") version "1.8.10" apply false
+        }
+        EOF
+
+    - name: Uygulama Modul Derleme Dosyasini Olustur (app/build.gradle.kts)
+      run: |
+        cat << 'EOF' > app/build.gradle.kts
+        plugins {
+            id("com.android.application")
+            id("org.jetbrains.kotlin.android")
+        }
+        android {
+            namespace = "com.hardware.batterymonitor"
+            compileSdk = 33
+            defaultConfig {
+                applicationId = "com.hardware.batterymonitor"
+                minSdk = 24
+                targetSdk = 33
+                versionCode = 1
+                versionName = "1.0"
+            }
+            buildFeatures {
+                compose = true
+            }
+            composeOptions {
+                kotlinCompilerExtensionVersion = "1.4.3"
+            }
+            kotlinOptions {
+                jvmTarget = "17"
+            }
+        }
+        dependencies {
+            implementation("androidx.core:core-ktx:1.10.1")
+            implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.6.1")
+            implementation("androidx.activity:activity-compose:1.7.2")
+            implementation(platform("androidx.compose:compose-bom:2023.05.01"))
+            implementation("androidx.compose.ui:ui")
+            implementation("androidx.compose.ui:ui-graphics")
+            implementation("androidx.compose.ui:ui-tooling-preview")
+            implementation("androidx.compose.material3:material3")
+        }
+        EOF
+
+    - name: Yerel Gradle Sürücüsünü Kur (Wrapper)
       run: gradle wrapper --gradle-version 8.1.1
 
-    - name: Motoru Ateşle ve APK Derle
+    - name: Projeyi Temizle ve APKyi Derle
       run: ./gradlew assembleDebug
 
-    - name: APK Dosyasını İndirmeye Hazırla
+    - name: Hazir APKyi Yukle ve Indirmeye Ac
       if: success()
       uses: actions/upload-artifact@v4
       with:
