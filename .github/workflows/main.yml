@@ -19,13 +19,13 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    - name: Proje Klasor Mimarisini Olustur
+    - name: Android Klasor Mimarisini Olustur
       run: |
         mkdir -p app/src/main/java/com/hardware/batterymonitor/core
         mkdir -p app/src/main/java/com/hardware/batterymonitor/services
         mkdir -p app/src/main/java/com/hardware/batterymonitor/ui
 
-    - name: Android Manifest Dosyasini Enjekte Et
+    - name: Android Manifest Dosyasini Yaz
       run: |
         cat << 'EOF' > app/src/main/AndroidManifest.xml
         <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.hardware.batterymonitor">
@@ -45,7 +45,7 @@ jobs:
         </manifest>
         EOF
 
-    - name: Batarya Donanim Yoneticisini Enjekte Et
+    - name: Batarya Donanim Yoneticisini Yaz
       run: |
         cat << 'EOF' > app/src/main/java/com/hardware/batterymonitor/core/BatteryHardwareManager.kt
         package com.hardware.batterymonitor.core
@@ -63,7 +63,7 @@ jobs:
         }
         EOF
 
-    - name: Arkaplan Izleme Servisini Enjekte Et
+    - name: Arkaplan Izleme Servisini Yaz
       run: |
         cat << 'EOF' > app/src/main/java/com/hardware/batterymonitor/services/BatteryMonitorService.kt
         package com.hardware.batterymonitor.services
@@ -121,7 +121,7 @@ jobs:
         }
         EOF
 
-    - name: UI ViewModel Katmanini Enjekte Et
+    - name: UI ViewModel Katmanini Yaz
       run: |
         cat << 'EOF' > app/src/main/java/com/hardware/batterymonitor/ui/BatteryViewModel.kt
         package com.hardware.batterymonitor.ui
@@ -155,7 +155,7 @@ jobs:
         }
         EOF
 
-    - name: UI Ekran Tasarimini Enjekte Et
+    - name: UI Ekran Tasarimini Yaz
       run: |
         cat << 'EOF' > app/src/main/java/com/hardware/batterymonitor/ui/BatteryDashboardScreen.kt
         package com.hardware.batterymonitor.ui
@@ -207,7 +207,7 @@ jobs:
         }
         EOF
 
-    - name: MainActivity Tetikleyicisini Enjekte Et
+    - name: MainActivity Kodunu Yaz
       run: |
         cat << 'EOF' > app/src/main/java/com/hardware/batterymonitor/MainActivity.kt
         package com.hardware.batterymonitor
@@ -228,7 +228,6 @@ jobs:
                     if (intent?.action == "BATTERY_HARDWARE_UPDATE") {
                         val current = intent.getIntExtra("current", 0)
                         val cycle = intent.getIntExtra("cycle", 0)
-                        // Donanımdan voltaj, sıcaklık ve yüzde verilerini de sistemden çekiyoruz
                         val ifilter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
                         val batteryStatus = context?.registerReceiver(null, ifilter)
                         val voltage = batteryStatus?.getIntExtra(BatteryManager.EXTRA_VOLTAGE, 0) ?: 0
@@ -236,7 +235,6 @@ jobs:
                         val level = batteryStatus?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
                         val scale = batteryStatus?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
                         val percent = (level * 100 / scale.toFloat()).toInt()
-                        
                         batteryViewModel.updateHardwareData(current, cycle, voltage, temperature, percent)
                     }
                 }
@@ -269,7 +267,7 @@ jobs:
         }
         EOF
 
-    - name: Gradle Çatı Yapısını Tamamen Kur (Ayar Enjeksiyonu)
+    - name: Proje Yapılandırma Dosyalarını Yaz
       run: |
         cat << 'EOF' > settings.gradle.kts
         pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
@@ -316,11 +314,13 @@ jobs:
         }
         EOF
 
-    - name: Yerel Gradle Sürücüsünü Kur (Wrapper)
-      run: gradle wrapper --gradle-version 8.1.1
+    - name: Resmi Gradle Motorunu Kur ve Yetkilendir (KRİTİK ADIM)
+      uses: gradle/actions/setup-gradle@v3
+      with:
+        gradle-version: 8.1.1
 
-    - name: Motoru Atesle ve APK Derle
-      run: ./gradlew assembleDebug
+    - name: APKyi Derle
+      run: gradle assembleDebug
 
     - name: Hazir APKyi Yukle ve Indirmeye Ac
       if: success()
