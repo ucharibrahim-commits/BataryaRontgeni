@@ -1,0 +1,30 @@
+name: Android APK Derleyici
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Kodlari Cek
+      uses: actions/checkout@v4
+
+    - name: Java JDK 17 Kur
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    - name: APK Derleme Komutunu Calistir
+      run: |
+        gradle init --type android-application --dsl kotlin
+        ./gradlew assembleDebug
+
+    - name: Uretilen APKyi Indirmeye Hazirla
+      uses: actions/actions-artifact-upload@v2
+      with:
+        name: Batarya-Rontgeni-APK
+        path: app/build/outputs/apk/debug/app-debug.apk
