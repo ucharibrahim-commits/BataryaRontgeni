@@ -1,0 +1,27 @@
+package com.hardware.batterymonitor.core
+
+import android.content.Context
+import android.os.BatteryManager
+
+class BatteryHardwareManager(private val context: Context) {
+
+    private val batteryManager = context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+
+    /**
+     * Donanım çipinden anlık akım değerini mA cinsinden çeker.
+     * Telefon şarj olurken (+) pozitif, deşarj olurken (-) negatif değer üretir.
+     */
+    fun getCurrentNow(): Int {
+        // Donanımdan MICROAMPERES gelir, mA birimi için 1000'e bölüyoruz.
+        val currentMicroAmp = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
+        return currentMicroAmp / 1000
+    }
+
+    /**
+     * Batarya çipine kaydedilmiş toplam fiziksel şarj döngüsünü döndürür.
+     * Kesin değişim uyarısı analizi için bu sayı çekirdek veridir.
+     */
+    fun getCycleCount(): Int {
+        return batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CYCLE_COUNT)
+    }
+}

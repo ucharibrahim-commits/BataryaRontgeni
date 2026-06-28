@@ -1,0 +1,47 @@
+package com.hardware.batterymonitor
+
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import android.os.PowerManager
+import android.provider.Settings
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.viewModels
+import com.hardware.batterymonitor.services.BatteryMonitorService
+import com.hardware.batterymonitor.ui.BatteryDashboardScreen
+import com.hardware.batterymonitor.ui.BatteryViewModel
+
+class MainActivity : ComponentActivity() {
+    private val batteryViewModel: BatteryViewModel by viewModels()
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        // 1. Kullanıcıyı ayarlarla uğraştırmamak için otomatik pil bypass talebi fırlat
+        checkAndRequestBatteryOptimization(this)
+
+        // 2. Arka plan motorunu ateşle
+        val serviceIntent = Intent(this, BatteryMonitorService::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(serviceIntent)
+        } else {
+            startService(serviceIntent)
+        }
+
+        // 3. Ekranı yansıt
+        setContent { BatteryDashboardScreen(viewModel = batteryViewModel) }
+    }
+
+    private fun checkAndRequestBatteryOptimization(context: Context) {
+        val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+        if (!pm.isIgnoringBatteryOptimizations(context.packageName)) {
+            val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                data = Uri.parse("package:${context.packageName}")
+            }
+            context.startActivity(intent)
+        }
+    }
+}

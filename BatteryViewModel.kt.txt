@@ -1,0 +1,47 @@
+package com.hardware.batterymonitor.ui
+
+import androidx.lifecycle.ViewModel
+import kotlinx.flow.MutableStateFlow
+import kotlinx.flow.StateFlow
+
+data class BatteryUiState(
+    val percentage: Int = 100,
+    val voltageInmV: Int = 4200,
+    val currentInmA: Int = 0,
+    val temperature: Int = 25,
+    val cycleCount: Int = 0,
+    val isChangeRequired: Boolean = false,
+    val alertReason: String = ""
+)
+
+class BatteryViewModel : ViewModel() {
+    private val _uiState = MutableStateFlow(BatteryUiState())
+    val uiState: StateFlow<BatteryUiState> = _uiState
+
+    // Donanımdan gelen ham verileri süzüp karara bağlayan motor
+    fun updateHardwareData(current: Int, cycle: Int, voltage: Int, temp: Int, percent: Int) {
+        var changeRequired = false
+        var reason = ""
+
+        when {
+            cycle >= 800 -> {
+                changeRequired = true
+                reason = "Yüksek Döngü ($cycle Çevrim)"
+            }
+            voltage in 1..3400 -> {
+                changeRequired = true
+                reason = "Kritik Voltaj Çökmesi ($voltage mV)"
+            }
+        }
+
+        _uiState.value = BatteryUiState(
+            percentage = percent,
+            voltageInmV = voltage,
+            currentInmA = current,
+            temperature = temp,
+            cycleCount = cycle,
+            isChangeRequired = changeRequired,
+            alertReason = reason
+        )
+    }
+}
